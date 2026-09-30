@@ -6,6 +6,8 @@
 # ============================================================
 
 import pyautogui
+import math
+import time
 import config
 
 
@@ -29,6 +31,20 @@ class CursorController:
 
         # --- Control state ---
         self.cursor_active = False  # True when hand is detected and finger is in region
+        self.is_pinching = False    # True when fingers are together
+        self.last_click_time = 0.0  # Used for click debounce/cooldown
+        
+        # --- Scroll state ---
+        self.is_scrolling = False
+        self.prev_scroll_y = None
+        
+        # --- Right click state ---
+        self.is_right_pinching = False
+        self.last_right_click_time = 0.0
+        
+        # --- Thumbs up state ---
+        self.is_thumbs_up_active = False
+        self.last_enter_time = 0.0
 
     def get_active_region(self, frame_width, frame_height):
         """
@@ -134,7 +150,106 @@ class CursorController:
 
         return int(smooth_x), int(smooth_y)
 
+    def handle_click(self, thumb_x, thumb_y, index_x, index_y):
+        """
+        Check distance between thumb and index finger.
+        Perform a left click if pinched and cooldown has passed.
+        
+        Args:
+            thumb_x, thumb_y: Pixel coordinates of the thumb tip.
+            index_x, index_y: Pixel coordinates of the index finger tip.
+            
+        Returns:
+            Boolean indicating if currently pinching.
+        """
+        # Calculate Euclidean distance between thumb and index
+        distance = math.hypot(index_x - thumb_x, index_y - thumb_y)
+        
+        current_time = time.time()
+        
+        if distance < config.PINCH_THRESHOLD:
+            if not self.is_pinching:
+                # Pinch just started, check cooldown and prevent conflict with right click
+                if not self.is_right_pinching and (current_time - self.last_click_time) > config.CLICK_COOLDOWN:
+                    pyautogui.click()
+                    self.last_click_time = current_time
+                # Set state to pinching so we don't click again until release
+                self.is_pinching = True
+        else:
+            # Fingers separated, reset pinch state
+            self.is_pinching = False
+            
+        return self.is_pinching
+
+    def handle_right_click(self, thumb_x, thumb_y, middle_x, middle_y):
+        """
+        Check distance between thumb and middle finger.
+        Perform a right click if pinched and cooldown has passed.
+        """
+        distance = math.hypot(middle_x - thumb_x, middle_y - thumb_y)
+        current_time = time.time()
+        
+        if distance < config.RIGHT_CLICK_THRESHOLD:
+            if not self.is_right_pinching:
+                # Pinch just started, check cooldown and prevent conflict with left click
+                if not self.is_pinching and (current_time - self.last_right_click_time) > config.RIGHT_CLICK_COOLDOWN:
+                    pyautogui.rightClick()
+                    self.last_right_click_time = current_time
+                self.is_right_pinching = True
+        else:
+            self.is_right_pinching = False
+            
+        return self.is_right_pinching
+
+    def handle_scroll(self, y_pos):
+        """
+        Determine scroll amount based on vertical movement of fingers.
+        Args:
+            y_pos: Current Y position of the fingers in pixel coordinates.
+        """
+        self.is_scrolling = True
+        
+        if self.prev_scroll_y is None:
+            self.prev_scroll_y = y_pos
+            return
+            
+        delta_y = y_pos - self.prev_scroll_y
+        
+        # Only scroll if movement exceeds dead zone (prevents jitter)
+        if abs(delta_y) > config.SCROLL_DEAD_ZONE:
+            # PyAutoGUI scroll on Windows: Positive = Up, Negative = Down
+            # If fingers move down (delta_y > 0), we want to scroll down (negative)
+            scroll_amount = -int(delta_y * config.SCROLL_SENSITIVITY)
+            pyautogui.scroll(scroll_amount)
+            # Update previous Y to current Y
+            self.prev_scroll_y = y_pos
+
+    def end_scroll(self):
+        """Reset scroll tracking when scroll gesture ends."""
+        self.is_scrolling = False
+        self.prev_scroll_y = None
+
+    def handle_thumbs_up(self, is_detected):
+        """
+        Triggers Enter key if thumbs up is detected, with debounce.
+        """
+        current_time = time.time()
+        
+        if is_detected:
+            if not self.is_thumbs_up_active:
+                if (current_time - self.last_enter_time) > config.THUMBS_UP_COOLDOWN:
+                    pyautogui.press('enter')
+                    self.last_enter_time = current_time
+                self.is_thumbs_up_active = True
+        else:
+            self.is_thumbs_up_active = False
+
     def reset(self):
         """Reset cursor tracking state (e.g., when hand disappears)."""
         self.is_initialized = False
         self.cursor_active = False
+        self.is_pinching = False
+        self.is_right_pinching = False
+        self.is_thumbs_up_active = False
+        self.end_scroll()
+

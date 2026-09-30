@@ -110,6 +110,51 @@ class HandTracker:
         y = int(lm.y * frame_height)
         return (x, y)
 
+    def get_raised_fingers(self):
+        """
+        Returns a list of 1s (raised) and 0s (folded) for the 4 fingers 
+        (Index, Middle, Ring, Pinky). Thumb is ignored for simplicity.
+        """
+        if self.landmarks is None:
+            return [0, 0, 0, 0]
+
+        fingers = []
+        # Tip and PIP (Proximal Interphalangeal) joint IDs for the 4 fingers
+        tip_ids = [8, 12, 16, 20]
+        pip_ids = [6, 10, 14, 18]
+
+        for tip, pip in zip(tip_ids, pip_ids):
+            # In image coordinates, smaller Y is higher (closer to top of screen)
+            if self.landmarks.landmark[tip].y < self.landmarks.landmark[pip].y:
+                fingers.append(1)
+            else:
+                fingers.append(0)
+
+        return fingers
+
+    def is_thumbs_up(self):
+        """
+        Detects if the hand is making a thumbs-up gesture.
+        Heuristic: 
+        1. All 4 fingers are folded.
+        2. Thumb tip (4) is higher (smaller Y) than the thumb MCP (2) and index MCP (5).
+        """
+        if self.landmarks is None:
+            return False
+
+        fingers = self.get_raised_fingers()
+        # Ensure Index, Middle, Ring, Pinky are all folded
+        if fingers == [0, 0, 0, 0]:
+            thumb_tip = self.landmarks.landmark[4]
+            thumb_mcp = self.landmarks.landmark[2]
+            index_mcp = self.landmarks.landmark[5]
+            
+            # Check if thumb tip is clearly pointing up relative to the knuckles
+            if thumb_tip.y < thumb_mcp.y and thumb_tip.y < index_mcp.y:
+                return True
+                
+        return False
+
     def release(self):
         """Release MediaPipe resources."""
         self.hands.close()

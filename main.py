@@ -90,7 +90,7 @@ def draw_overlay(frame, fps, hand_detected, hand_label, cursor_ctrl):
 
     # --- Semi-transparent background bar for readability ---
     overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (w, 115), (0, 0, 0), -1)
+    cv2.rectangle(overlay, (0, 0), (w, 260), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
 
     # --- FPS ---
@@ -147,6 +147,79 @@ def draw_overlay(frame, fps, hand_detected, hand_label, cursor_ctrl):
         cv2.LINE_AA,
     )
 
+    # --- Pinch Status (Phase 3) ---
+    if cursor_ctrl.is_pinching:
+        pinch_text = "Pinch: ON (Click!)"
+        pinch_color = config.TEXT_COLOR_GREEN
+    else:
+        pinch_text = "Pinch: OFF"
+        pinch_color = config.TEXT_COLOR_RED
+
+    cv2.putText(
+        frame, pinch_text,
+        config.PINCH_INFO_POSITION,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        pinch_color,
+        config.FONT_THICKNESS,
+        cv2.LINE_AA,
+    )
+
+    # --- Scroll Status (Phase 4) ---
+    if cursor_ctrl.is_scrolling:
+        scroll_text = "Scroll: ON"
+        scroll_color = config.TEXT_COLOR_GREEN
+    else:
+        scroll_text = "Scroll: OFF"
+        scroll_color = config.TEXT_COLOR_RED
+
+    cv2.putText(
+        frame, scroll_text,
+        config.SCROLL_INFO_POSITION,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        scroll_color,
+        config.FONT_THICKNESS,
+        cv2.LINE_AA,
+    )
+
+    # --- Right Click Status (Phase 5) ---
+    if cursor_ctrl.is_right_pinching:
+        rc_text = "Right Click: ON (Click!)"
+        rc_color = config.TEXT_COLOR_GREEN
+    else:
+        rc_text = "Right Click: OFF"
+        rc_color = config.TEXT_COLOR_RED
+
+    cv2.putText(
+        frame, rc_text,
+        config.RIGHT_CLICK_INFO_POSITION,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        rc_color,
+        config.FONT_THICKNESS,
+        cv2.LINE_AA,
+    )
+
+    # --- Thumbs Up Status (Phase 6) ---
+    if cursor_ctrl.is_thumbs_up_active:
+        tu_text = "Thumbs Up: ON (Enter!)"
+        tu_color = config.TEXT_COLOR_GREEN
+    else:
+        tu_text = "Thumbs Up: OFF"
+        tu_color = config.TEXT_COLOR_RED
+
+    cv2.putText(
+        frame, tu_text,
+        config.THUMBS_UP_INFO_POSITION,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        tu_color,
+        config.FONT_THICKNESS,
+        cv2.LINE_AA,
+    )
+
+
 
 def main():
     # --- Initialize camera ---
@@ -182,23 +255,55 @@ def main():
 
             # --- Hand tracking ---
             hand_detected = tracker.process(frame)
+            fingers = tracker.get_raised_fingers()
 
             # --- Draw active region rectangle ---
             draw_active_region(frame, cursor_ctrl)
 
-            # --- Cursor movement (Phase 2) ---
+            # --- Cursor movement, Clicking, Scrolling, & Thumbs Up (Phase 2-6) ---
             finger_pos = None
+            thumb_pos = None
+            middle_pos = None
             if hand_detected:
-                # Get index finger tip position (landmark 8)
+                # Get index finger tip (landmark 8), thumb tip (landmark 4), and middle tip (landmark 12)
                 finger_pos = tracker.get_landmark_coords(8, frame_w, frame_h)
+                thumb_pos = tracker.get_landmark_coords(4, frame_w, frame_h)
+                middle_pos = tracker.get_landmark_coords(12, frame_w, frame_h)
+                is_thumbs_up_gesture = tracker.is_thumbs_up()
 
                 if finger_pos is not None:
-                    # Move cursor based on finger position
-                    cursor_ctrl.move(finger_pos[0], finger_pos[1], frame_w, frame_h)
+                    # Check if Index and Middle fingers are raised, and Ring/Pinky are folded
+                    # [Index, Middle, Ring, Pinky]
+                    if fingers == [1, 1, 0, 0]:
+                        # Scroll Mode
+                        cursor_ctrl.handle_thumbs_up(False)
+                        if middle_pos is not None:
+                            # Use average Y coordinate of index and middle fingers for smoother scrolling
+                            avg_y = (finger_pos[1] + middle_pos[1]) / 2.0
+                            cursor_ctrl.handle_scroll(avg_y)
+                    elif is_thumbs_up_gesture:
+                        # Thumbs Up Mode
+                        cursor_ctrl.end_scroll()
+                        cursor_ctrl.handle_thumbs_up(True)
+                    else:
+                        # Cursor Mode (Movement and Pinch)
+                        cursor_ctrl.end_scroll()
+                        cursor_ctrl.handle_thumbs_up(False)
+                        
+                        # Move cursor based on finger position
+                        cursor_ctrl.move(finger_pos[0], finger_pos[1], frame_w, frame_h)
+                
+                        if thumb_pos is not None:
+                            # Handle left click (thumb + index)
+                            cursor_ctrl.handle_click(thumb_pos[0], thumb_pos[1], finger_pos[0], finger_pos[1])
+                            
+                            if middle_pos is not None:
+                                # Handle right click (thumb + middle)
+                                cursor_ctrl.handle_right_click(thumb_pos[0], thumb_pos[1], middle_pos[0], middle_pos[1])
             else:
-                # No hand → reset cursor tracking so next detection
-                # doesn't cause a sudden jump from the old position
+                # No hand → reset state
                 cursor_ctrl.reset()
+
 
             # --- Draw landmarks on frame ---
             tracker.draw_landmarks(frame)

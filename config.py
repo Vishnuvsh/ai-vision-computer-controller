@@ -39,7 +39,7 @@ FPS_POSITION = (10, 30)
 STATUS_POSITION = (10, 65)
 CURSOR_INFO_POSITION = (10, 100)
 
-# --- Cursor Control Settings (Phase 2) ---
+# --- Cursor Control Settings (Phase 2, 3, 4, 5, & 6) ---
 CURSOR_SMOOTHING = 0.7          # 0.0 = no smoothing (raw), 1.0 = max smoothing (frozen)
                                 # Recommended range: 0.5 — 0.8
 ACTIVE_REGION_MARGIN_X = 0.12   # 12% margin on left and right edges
@@ -48,3 +48,22 @@ ACTIVE_REGION_COLOR = (255, 255, 0)  # Cyan rectangle for active region
 ACTIVE_REGION_THICKNESS = 2
 INDEX_FINGER_DOT_COLOR = (0, 0, 255)  # Red dot on index finger tip
 INDEX_FINGER_DOT_RADIUS = 10
+
+# --- Pinch / Click Settings (Phase 3) ---
+PINCH_THRESHOLD = 30            # Pixel distance between thumb and index finger to trigger pinch
+CLICK_COOLDOWN = 0.5            # Minimum seconds between clicks to prevent double-clicking
+PINCH_INFO_POSITION = (10, 135)
+
+# --- Scroll Settings (Phase 4) ---
+SCROLL_SENSITIVITY = 15         # Multiplier for scroll distance (Windows typically uses increments of 120)
+SCROLL_DEAD_ZONE = 10           # Pixel movement required before scrolling starts
+SCROLL_INFO_POSITION = (10, 170)
+
+# --- Right Click Settings (Phase 5) ---
+RIGHT_CLICK_THRESHOLD = 30
+RIGHT_CLICK_COOLDOWN = 0.5
+RIGHT_CLICK_INFO_POSITION = (10, 205)
+
+# --- Thumbs Up Settings (Phase 6) ---
+THUMBS_UP_COOLDOWN = 1.0
+THUMBS_UP_INFO_POSITION = (10, 240)
