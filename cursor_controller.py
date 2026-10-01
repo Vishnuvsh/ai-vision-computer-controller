@@ -8,6 +8,7 @@
 import pyautogui
 import math
 import time
+import collections
 import config
 
 
@@ -45,6 +46,30 @@ class CursorController:
         # --- Thumbs up state ---
         self.is_thumbs_up_active = False
         self.last_enter_time = 0.0
+
+        # --- Pause state (Phase 7) ---
+        self.is_paused = False
+        
+        # --- Fist state (Phase 8) ---
+        self.is_fist_active = False
+        self.last_fist_time = 0.0
+
+        # --- Gesture Stability (Phase 9) ---
+        self.gesture_history = collections.deque(maxlen=config.STABILITY_FRAMES)
+        self.stable_gesture = "NONE"
+
+    def update_gesture_history(self, raw_gesture):
+        """
+        Adds raw gesture to rolling history and returns the current stable gesture.
+        A gesture is stable only if it fills the entire history queue.
+        """
+        self.gesture_history.append(raw_gesture)
+        
+        # Check if the recent frames consistently show the same gesture
+        if self.gesture_history.count(raw_gesture) == config.STABILITY_FRAMES:
+            self.stable_gesture = raw_gesture
+            
+        return self.stable_gesture
 
     def get_active_region(self, frame_width, frame_height):
         """
@@ -150,56 +175,23 @@ class CursorController:
 
         return int(smooth_x), int(smooth_y)
 
-    def handle_click(self, thumb_x, thumb_y, index_x, index_y):
-        """
-        Check distance between thumb and index finger.
-        Perform a left click if pinched and cooldown has passed.
-        
-        Args:
-            thumb_x, thumb_y: Pixel coordinates of the thumb tip.
-            index_x, index_y: Pixel coordinates of the index finger tip.
-            
-        Returns:
-            Boolean indicating if currently pinching.
-        """
-        # Calculate Euclidean distance between thumb and index
-        distance = math.hypot(index_x - thumb_x, index_y - thumb_y)
-        
+    def trigger_left_click(self):
+        """Perform a left click if cooldown has passed (distance check handled externally)."""
         current_time = time.time()
-        
-        if distance < config.PINCH_THRESHOLD:
-            if not self.is_pinching:
-                # Pinch just started, check cooldown and prevent conflict with right click
-                if not self.is_right_pinching and (current_time - self.last_click_time) > config.CLICK_COOLDOWN:
-                    pyautogui.click()
-                    self.last_click_time = current_time
-                # Set state to pinching so we don't click again until release
-                self.is_pinching = True
-        else:
-            # Fingers separated, reset pinch state
-            self.is_pinching = False
-            
-        return self.is_pinching
+        if not self.is_pinching:
+            if not self.is_right_pinching and (current_time - self.last_click_time) > config.CLICK_COOLDOWN:
+                pyautogui.click()
+                self.last_click_time = current_time
+            self.is_pinching = True
 
-    def handle_right_click(self, thumb_x, thumb_y, middle_x, middle_y):
-        """
-        Check distance between thumb and middle finger.
-        Perform a right click if pinched and cooldown has passed.
-        """
-        distance = math.hypot(middle_x - thumb_x, middle_y - thumb_y)
+    def trigger_right_click(self):
+        """Perform a right click if cooldown has passed."""
         current_time = time.time()
-        
-        if distance < config.RIGHT_CLICK_THRESHOLD:
-            if not self.is_right_pinching:
-                # Pinch just started, check cooldown and prevent conflict with left click
-                if not self.is_pinching and (current_time - self.last_right_click_time) > config.RIGHT_CLICK_COOLDOWN:
-                    pyautogui.rightClick()
-                    self.last_right_click_time = current_time
-                self.is_right_pinching = True
-        else:
-            self.is_right_pinching = False
-            
-        return self.is_right_pinching
+        if not self.is_right_pinching:
+            if not self.is_pinching and (current_time - self.last_right_click_time) > config.RIGHT_CLICK_COOLDOWN:
+                pyautogui.rightClick()
+                self.last_right_click_time = current_time
+            self.is_right_pinching = True
 
     def handle_scroll(self, y_pos):
         """
@@ -244,6 +236,21 @@ class CursorController:
         else:
             self.is_thumbs_up_active = False
 
+    def handle_fist(self, is_detected):
+        """
+        Triggers Escape key if fist is detected, with one-shot logic.
+        """
+        current_time = time.time()
+        
+        if is_detected:
+            if not self.is_fist_active:
+                if (current_time - self.last_fist_time) > config.FIST_COOLDOWN:
+                    pyautogui.press('esc')
+                    self.last_fist_time = current_time
+                self.is_fist_active = True
+        else:
+            self.is_fist_active = False
+
     def reset(self):
         """Reset cursor tracking state (e.g., when hand disappears)."""
         self.is_initialized = False
@@ -251,5 +258,9 @@ class CursorController:
         self.is_pinching = False
         self.is_right_pinching = False
         self.is_thumbs_up_active = False
+        self.is_fist_active = False
         self.end_scroll()
+        
+        # Clear stability queue when hand disappears to require fresh read on return
+        self.gesture_history.clear()
 

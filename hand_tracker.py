@@ -155,6 +155,38 @@ class HandTracker:
                 
         return False
 
+    def is_open_palm(self):
+        """
+        Detects if the hand is making an open palm gesture.
+        Heuristic: 
+        1. All 4 fingers (Index, Middle, Ring, Pinky) are raised.
+        """
+        if self.landmarks is None:
+            return False
+
+        fingers = self.get_raised_fingers()
+        # Check if Index, Middle, Ring, Pinky are all raised
+        if fingers == [1, 1, 1, 1]:
+            return True
+            
+        return False
+
+    def is_fist(self):
+        """
+        Detects if the hand is making a closed fist.
+        Heuristic:
+        1. All 4 fingers are folded.
+        2. The thumb is NOT in a thumbs-up position.
+        """
+        if self.landmarks is None:
+            return False
+            
+        fingers = self.get_raised_fingers()
+        if fingers == [0, 0, 0, 0] and not self.is_thumbs_up():
+            return True
+            
+        return False
+
     def release(self):
         """Release MediaPipe resources."""
         self.hands.close()
