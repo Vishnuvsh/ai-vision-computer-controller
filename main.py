@@ -12,6 +12,7 @@ import sys
 import time
 import cv2
 import numpy as np
+import math
 import config
 from hand_tracker import HandTracker
 from cursor_controller import CursorController
