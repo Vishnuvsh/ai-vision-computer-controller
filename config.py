@@ -8,18 +8,18 @@
 
 # --- Camera Settings ---
 CAMERA_INDEX = 0              # Default webcam
-CAMERA_BACKEND = "DSHOW"      # Use DirectShow on Windows (MSMF fails on many systems)
+CAMERA_BACKEND = "ANY"        # Let OpenCV auto-select the best backend
 CAMERA_WIDTH = 640            # Capture width
 CAMERA_HEIGHT = 480           # Capture height
 CAMERA_FPS = 30               # Target FPS
 
 # --- MediaPipe Hand Tracking Settings ---
 MAX_NUM_HANDS = 1             # Detect one hand only
-MIN_DETECTION_CONFIDENCE = 0.7
-MIN_TRACKING_CONFIDENCE = 0.6
+MIN_DETECTION_CONFIDENCE = 0.5
+MIN_TRACKING_CONFIDENCE = 0.4
 
 # --- Display Settings ---
-WINDOW_NAME = "Gesture Control — Final Phase"
+WINDOW_NAME = "Gesture Control - Final Phase"
 SHOW_FPS = True
 SHOW_HAND_STATUS = True
 
