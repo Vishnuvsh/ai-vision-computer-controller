@@ -36,7 +36,12 @@ def initialize_camera():
     backend_name = config.CAMERA_BACKEND
 
     print(f"[INFO] Opening camera index {config.CAMERA_INDEX} with {backend_name} backend...")
-    cap = cv2.VideoCapture(config.CAMERA_INDEX, backend)
+    
+    if backend_name == "ANY":
+        # Let OpenCV auto-detect without explicit backend (more reliable on some systems)
+        cap = cv2.VideoCapture(config.CAMERA_INDEX)
+    else:
+        cap = cv2.VideoCapture(config.CAMERA_INDEX, backend)
 
     if not cap.isOpened():
         print("[ERROR] Could not open webcam.")
@@ -60,20 +65,32 @@ def initialize_camera():
 
 
 def draw_active_region(frame, cursor_ctrl):
-    """Draw the active control region rectangle on the frame."""
+    """Draw the active control region using stylized corner brackets."""
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = cursor_ctrl.get_active_region(w, h)
 
-    cv2.rectangle(
-        frame,
-        (x1, y1), (x2, y2),
-        config.ACTIVE_REGION_COLOR,
-        config.ACTIVE_REGION_THICKNESS,
-    )
+    color = config.ACTIVE_REGION_COLOR
+    t = config.ACTIVE_REGION_THICKNESS
+    l = 30  # length of corner bracket line
+    
+    # Draw corners
+    cv2.line(frame, (x1, y1), (x1 + l, y1), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x1, y1), (x1, y1 + l), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x2, y1), (x2 - l, y1), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x2, y1), (x2, y1 + l), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x1, y2), (x1 + l, y2), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x1, y2), (x1, y2 - l), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x2, y2), (x2 - l, y2), color, t, cv2.LINE_AA)
+    cv2.line(frame, (x2, y2), (x2, y2 - l), color, t, cv2.LINE_AA)
+    
+    # Draw a faint rectangle for the rest
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 1)
+    cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
 
 
-def draw_index_finger_dot(frame, finger_pos):
-    """Draw a highlighted dot on the index finger tip."""
+def draw_index_finger_dot(frame, finger_pos, thumb_pos=None, middle_pos=None):
+    """Draw a highlighted dot on the index finger tip and dynamic pinch lines."""
     if finger_pos is not None:
         cv2.circle(
             frame,
@@ -81,102 +98,153 @@ def draw_index_finger_dot(frame, finger_pos):
             config.INDEX_FINGER_DOT_RADIUS,
             config.INDEX_FINGER_DOT_COLOR,
             -1,  # filled
+            cv2.LINE_AA
         )
+        # Outer ring for index finger
+        cv2.circle(
+            frame,
+            finger_pos,
+            config.INDEX_FINGER_DOT_RADIUS + 4,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA
+        )
+
+    # Draw dynamic pinch line for left click (thumb and index)
+    if finger_pos is not None and thumb_pos is not None:
+        dist_left = math.hypot(finger_pos[0] - thumb_pos[0], finger_pos[1] - thumb_pos[1])
+        # Color gradient based on distance
+        intensity = min(255, max(0, int((dist_left / 100.0) * 255)))
+        line_color = (0, intensity, 255 - intensity)
+        
+        if dist_left < config.PINCH_THRESHOLD:
+            line_color = (0, 0, 255) # Solid red when pinching
+            cv2.circle(frame, finger_pos, config.INDEX_FINGER_DOT_RADIUS + 8, (0, 0, 255), 2, cv2.LINE_AA)
+        
+        cv2.line(frame, finger_pos, thumb_pos, line_color, 2, cv2.LINE_AA)
+
+    # Draw dynamic pinch line for right click (thumb and middle)
+    if middle_pos is not None and thumb_pos is not None:
+        dist_right = math.hypot(middle_pos[0] - thumb_pos[0], middle_pos[1] - thumb_pos[1])
+        intensity = min(255, max(0, int((dist_right / 100.0) * 255)))
+        line_color = (255, intensity, 0) # Blue gradient
+        
+        if dist_right < config.RIGHT_CLICK_THRESHOLD:
+            line_color = (255, 0, 0) # Solid blue when right pinching
+            cv2.circle(frame, middle_pos, config.INDEX_FINGER_DOT_RADIUS + 8, (255, 0, 0), 2, cv2.LINE_AA)
+            
+        cv2.line(frame, middle_pos, thumb_pos, line_color, 2, cv2.LINE_AA)
 
 
 def draw_control_panel(canvas, start_x, fps, hand_detected, hand_label, cursor_ctrl, stable_gesture, camera_running, emergency_stop):
     """
-    Draws a clean, professional sidebar UI on the right side of the canvas.
+    Draws a clean, professional sidebar UI on the right side of the canvas with styled cards.
     """
-    # Background color for panel (dark gray)
-    canvas[:, start_x:] = (30, 30, 30)
+    # Background color for panel (darker gray)
+    canvas[:, start_x:] = (20, 20, 20)
     
-    # Title
-    cv2.putText(canvas, "AI VISION CONTROLLER", (start_x + 20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 0), 2)
+    # Header
+    cv2.putText(canvas, "AI VISION CONTROLLER", (start_x + 20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 215, 0), 2, cv2.LINE_AA)
+    cv2.line(canvas, (start_x + 20, 45), (start_x + 300, 45), (100, 100, 100), 1, cv2.LINE_AA)
     
-    # Status Section
-    y = 70
+    card_w = 280
+    x_pos = start_x + 20
+    
+    # --- System Status Card ---
+    y_pos = 60
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 155), (35, 35, 35), -1)
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 155), (70, 70, 70), 1)
+    cv2.putText(canvas, "SYSTEM STATUS", (x_pos + 10, y_pos + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+    cv2.line(canvas, (x_pos + 10, y_pos + 28), (x_pos + card_w - 10, y_pos + 28), (70, 70, 70), 1, cv2.LINE_AA)
+    
+    y = y_pos + 45
     if emergency_stop:
-        cv2.putText(canvas, "EMERGENCY STOP: ON", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-        y += 25
-        cv2.putText(canvas, "Press 'R' to Resume", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        y += 25
+        cv2.putText(canvas, "EMERGENCY STOP: ON", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv2.LINE_AA)
+        y += 22
+        cv2.putText(canvas, "Press 'R' to Resume", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
     else:
-        cv2.putText(canvas, "EMERGENCY STOP: OFF", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
-        y += 25
-
+        cv2.putText(canvas, "EMERGENCY STOP: OFF", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
+    
+    y += 25
     cam_status = "ACTIVE" if camera_running else "STOPPED"
     cam_color = (0, 255, 0) if camera_running else (0, 0, 255)
-    cv2.putText(canvas, f"Camera: {cam_status}", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cam_color, 1)
+    cv2.putText(canvas, f"Camera: {cam_status}", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cam_color, 1, cv2.LINE_AA)
     
-    y += 25
-    cv2.putText(canvas, f"FPS: {fps:.1f}", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    y += 20
+    cv2.putText(canvas, f"FPS: {fps:.1f}", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
     
-    y += 25
+    y += 20
     if hand_detected:
         hand_text = f"Hand: DETECTED ({hand_label})"
         hand_color = (0, 255, 0)
     else:
         hand_text = "Hand: NOT DETECTED"
         hand_color = (0, 0, 255)
-    cv2.putText(canvas, hand_text, (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, hand_color, 1)
+    cv2.putText(canvas, hand_text, (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, hand_color, 1, cv2.LINE_AA)
     
+    y += 20
+    pause_text = "PAUSED" if cursor_ctrl.is_paused else "ACTIVE"
+    pause_color = (0, 0, 255) if cursor_ctrl.is_paused else (0, 255, 0)
+    cv2.putText(canvas, f"Control: {pause_text}", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, pause_color, 1, cv2.LINE_AA)
+    
+    # --- Live Actions Card ---
+    y_pos += 165
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 160), (35, 35, 35), -1)
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 160), (70, 70, 70), 1)
+    cv2.putText(canvas, "LIVE ACTIONS", (x_pos + 10, y_pos + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+    cv2.line(canvas, (x_pos + 10, y_pos + 28), (x_pos + card_w - 10, y_pos + 28), (70, 70, 70), 1, cv2.LINE_AA)
+    
+    y = y_pos + 45
+    cv2.putText(canvas, f"Gesture: {stable_gesture}", (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 215, 0), 1, cv2.LINE_AA)
     y += 25
-    cv2.putText(canvas, f"Gesture: {stable_gesture}", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
     
-    y += 25
-    if cursor_ctrl.is_paused:
-        pause_text = "Control: PAUSED"
-        pause_color = (0, 0, 255)
-    else:
-        pause_text = "Control: ACTIVE"
-        pause_color = (0, 255, 0)
-    cv2.putText(canvas, pause_text, (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, pause_color, 1)
-    
-    y += 40
-    # Action Status Section
-    cv2.putText(canvas, "ACTION STATUS", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 0), 1)
-    y += 25
-    
-    def draw_status(label, is_active, y_pos):
+    def draw_status(label, is_active, y_pos_inner):
         color = (0, 255, 0) if is_active else (100, 100, 100)
         state = "ON" if is_active else "OFF"
-        cv2.putText(canvas, f"{label}: {state}", (start_x + 20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-        return y_pos + 25
+        cv2.putText(canvas, f"{label}: {state}", (x_pos + 10, y_pos_inner), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+        return y_pos_inner + 20
 
     y = draw_status("Left Click", cursor_ctrl.is_pinching, y)
     y = draw_status("Right Click", cursor_ctrl.is_right_pinching, y)
     y = draw_status("Scroll", stable_gesture == "SCROLL", y)
     y = draw_status("Enter", cursor_ctrl.is_thumbs_up_active, y)
-    y = draw_status("Escape", cursor_ctrl.is_fist_active, y)
     
-    y += 15
-    # Help Section
-    cv2.putText(canvas, "GESTURE GUIDE", (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 0), 1)
-    y += 25
+    # --- Guide Card ---
+    y_pos += 170
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 115), (35, 35, 35), -1)
+    cv2.rectangle(canvas, (x_pos, y_pos), (x_pos + card_w, y_pos + 115), (70, 70, 70), 1)
+    cv2.putText(canvas, "SHORTCUTS", (x_pos + 10, y_pos + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+    cv2.line(canvas, (x_pos + 10, y_pos + 28), (x_pos + card_w - 10, y_pos + 28), (70, 70, 70), 1, cv2.LINE_AA)
     
-    guide = [
-        "[1 Finger] Cursor",
-        "[Pinch] Left Click",
-        "[2 Fingers] Scroll",
-        "[Mid Pinch] Right Click",
-        "[Thumbs Up] Enter",
-        "[Open Palm] Pause",
-        "[Fist] Escape",
-        "",
-        "Press 'ESC' for Emergency Stop",
-        "Press 'R' to Resume Control",
-        "Press 'S' to Stop/Start Cam",
-        "Press 'Q' to Quit"
+    y = y_pos + 45
+    guide_lines = [
+        "ESC : Emergency Stop",
+        "R   : Resume Control",
+        "S   : Stop/Start Camera",
+        "Q   : Quit Application"
     ]
-    for text in guide:
-        cv2.putText(canvas, text, (start_x + 20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-        y += 20
+    for text in guide_lines:
+        cv2.putText(canvas, text, (x_pos + 10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1, cv2.LINE_AA)
+        y += 18
 
 def main():
     # --- Initialize camera ---
     cap = initialize_camera()
     if cap is None:
+        sys.exit(1)
+
+    # --- Warm up camera immediately (before heavy init) ---
+    print("[INFO] Warming up camera...")
+    warmup_success = 0
+    for i in range(30):
+        ret, _ = cap.read()
+        if ret:
+            warmup_success += 1
+    print(f"[INFO] Camera warmup: {warmup_success}/30 frames OK.")
+
+    if warmup_success == 0:
+        print("[ERROR] Camera returned no valid frames during warmup.")
+        cap.release()
         sys.exit(1)
 
     # --- Initialize hand tracker ---
@@ -193,6 +261,13 @@ def main():
     fps = 0.0
     camera_running = True
     emergency_stop = False
+    frame_fail_count = 0
+
+    # --- Create window explicitly and bring to front ---
+    cv2.namedWindow(config.WINDOW_NAME, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(config.WINDOW_NAME, 960, 480)
+    cv2.setWindowProperty(config.WINDOW_NAME, cv2.WND_PROP_TOPMOST, 1)
+    print("[INFO] Display window created.")
 
     try:
         while True:
@@ -214,9 +289,20 @@ def main():
             ret, frame = cap.read()
 
             if not ret:
-                print("[ERROR] Failed to read frame from webcam.")
-                print("        Camera may have been disconnected.")
-                break
+                frame_fail_count += 1
+                print(f"[WARN] Frame read failed (attempt {frame_fail_count})...")
+                if frame_fail_count >= 15:
+                    print("[ERROR] Too many consecutive frame failures. Trying to reopen camera...")
+                    cap.release()
+                    time.sleep(1)
+                    cap = cv2.VideoCapture(config.CAMERA_INDEX)
+                    if not cap.isOpened():
+                        print("[ERROR] Could not reopen webcam. Exiting.")
+                        break
+                    frame_fail_count = 0
+                    print("[INFO] Camera reopened successfully.")
+                continue
+            frame_fail_count = 0
 
             # Flip horizontally so movements feel natural (mirror view)
             frame = cv2.flip(frame, 1)
@@ -341,11 +427,11 @@ def main():
                 tracker.draw_landmarks(canvas[:, :frame_w])
     
                 # --- Draw highlighted index finger dot ---
-                draw_index_finger_dot(canvas[:, :frame_w], finger_pos)
+                draw_index_finger_dot(canvas[:, :frame_w], finger_pos, thumb_pos, middle_pos)
             else:
                 # If camera is stopped, just put a message on the blank left side
                 cv2.putText(canvas, "CAMERA STOPPED", (frame_w // 2 - 120, frame_h // 2), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
                 cursor_ctrl.reset()
 
             # --- Calculate FPS ---
