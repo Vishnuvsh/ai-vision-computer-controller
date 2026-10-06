@@ -148,6 +148,8 @@ def draw_control_panel(canvas, start_x, fps, hand_detected, hand_label, cursor_c
     cv2.line(canvas, (start_x + 20, 45), (start_x + 300, 45), (100, 100, 100), 1, cv2.LINE_AA)
     
     card_w = 280
+
+    
     x_pos = start_x + 20
     
     # --- System Status Card ---
@@ -265,7 +267,7 @@ def main():
 
     # --- Create window explicitly and bring to front ---
     cv2.namedWindow(config.WINDOW_NAME, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(config.WINDOW_NAME, 960, 480)
+    cv2.resizeWindow(config.WINDOW_NAME, 640, 480)
     cv2.setWindowProperty(config.WINDOW_NAME, cv2.WND_PROP_TOPMOST, 1)
     print("[INFO] Display window created.")
 
@@ -308,24 +310,20 @@ def main():
             frame = cv2.flip(frame, 1)
             frame_h, frame_w = frame.shape[:2]
             
-            # --- Create UI Canvas ---
-            panel_w = 320
-            canvas = np.zeros((frame_h, frame_w + panel_w, 3), dtype=np.uint8)
+            # --- Create UI Canvas (black background) ---
+            canvas = np.zeros((frame_h, frame_w, 3), dtype=np.uint8)
             
             # Default state when camera is stopped
             hand_detected = False
             stable_gesture = "NONE"
             
             if camera_running:
-                # Put the camera frame on the left
-                canvas[:, :frame_w] = frame
-                
-                # --- Hand tracking ---
+                # --- Hand tracking (on original frame) ---
                 hand_detected = tracker.process(frame)
                 fingers = tracker.get_raised_fingers()
     
                 # --- Draw active region rectangle ---
-                draw_active_region(canvas[:, :frame_w], cursor_ctrl)
+                draw_active_region(canvas, cursor_ctrl)
     
                 # --- Cursor movement, Clicking, Scrolling, & Thumbs Up (Phase 2-9) ---
             finger_pos = None
@@ -341,8 +339,7 @@ def main():
                 
                 if tracker.is_open_palm():
                     raw_gesture = "PAUSE"
-                elif tracker.is_fist():
-                    raw_gesture = "FIST"
+                # Removed FIST gesture as requested
                 elif fingers == [1, 1, 0, 0]:
                     raw_gesture = "SCROLL"
                 elif tracker.is_thumbs_up():
@@ -386,7 +383,6 @@ def main():
                 if stable_gesture in ["CURSOR", "LEFT_CLICK", "RIGHT_CLICK"] and finger_pos is not None:
                     cursor_ctrl.end_scroll()
                     cursor_ctrl.handle_thumbs_up(False)
-                    cursor_ctrl.handle_fist(False)
                     cursor_ctrl.move(finger_pos[0], finger_pos[1], frame_w, frame_h)
                     
                     if stable_gesture == "LEFT_CLICK":
@@ -401,7 +397,6 @@ def main():
                         
                 elif stable_gesture == "SCROLL" and finger_pos is not None and middle_pos is not None:
                     cursor_ctrl.handle_thumbs_up(False)
-                    cursor_ctrl.handle_fist(False)
                     cursor_ctrl.is_pinching = False
                     cursor_ctrl.is_right_pinching = False
                     avg_y = (finger_pos[1] + middle_pos[1]) / 2.0
@@ -409,25 +404,17 @@ def main():
                     
                 elif stable_gesture == "THUMBS_UP":
                     cursor_ctrl.end_scroll()
-                    cursor_ctrl.handle_fist(False)
                     cursor_ctrl.is_pinching = False
                     cursor_ctrl.is_right_pinching = False
                     cursor_ctrl.handle_thumbs_up(True)
-                    
-                elif stable_gesture == "FIST":
-                    cursor_ctrl.end_scroll()
-                    cursor_ctrl.handle_thumbs_up(False)
-                    cursor_ctrl.is_pinching = False
-                    cursor_ctrl.is_right_pinching = False
-                    cursor_ctrl.handle_fist(True)
 
 
             if camera_running:
                 # --- Draw landmarks on frame ---
-                tracker.draw_landmarks(canvas[:, :frame_w])
+                tracker.draw_landmarks(canvas)
     
                 # --- Draw highlighted index finger dot ---
-                draw_index_finger_dot(canvas[:, :frame_w], finger_pos, thumb_pos, middle_pos)
+                draw_index_finger_dot(canvas, finger_pos, thumb_pos, middle_pos)
             else:
                 # If camera is stopped, just put a message on the blank left side
                 cv2.putText(canvas, "CAMERA STOPPED", (frame_w // 2 - 120, frame_h // 2), 
@@ -442,7 +429,7 @@ def main():
             prev_time = current_time
 
             # --- Draw Control Panel ---
-            draw_control_panel(canvas, frame_w, fps, hand_detected, tracker.hand_label, cursor_ctrl, stable_gesture, camera_running, emergency_stop)
+            # draw_control_panel(canvas, frame_w, fps, hand_detected, tracker.hand_label, cursor_ctrl, stable_gesture, camera_running, emergency_stop)
 
             # --- Show frame ---
             cv2.imshow(config.WINDOW_NAME, canvas)
