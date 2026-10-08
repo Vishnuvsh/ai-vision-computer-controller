@@ -15,8 +15,8 @@ CAMERA_FPS = 30               # Target FPS
 
 # --- MediaPipe Hand Tracking Settings ---
 MAX_NUM_HANDS = 1             # Detect one hand only
-MIN_DETECTION_CONFIDENCE = 0.5
-MIN_TRACKING_CONFIDENCE = 0.4
+MIN_DETECTION_CONFIDENCE = 0.7
+MIN_TRACKING_CONFIDENCE = 0.6
 
 # --- Display Settings ---
 WINDOW_NAME = "Gesture Control - Final Phase"
@@ -37,10 +37,10 @@ TEXT_COLOR_RED = (0, 0, 255)
 TEXT_COLOR_WHITE = (255, 255, 255)
 
 # --- Cursor Control Settings (Phase 2, 3, 4, 5, & 6) ---
-CURSOR_SMOOTHING = 0.4         # 0.0 = no smoothing (raw), 1.0 = max smoothing (frozen)
+CURSOR_SMOOTHING = 0.75         # 0.0 = no smoothing (raw), 1.0 = max smoothing (frozen)
                                 # Recommended range: 0.2 — 0.8
-ACTIVE_REGION_MARGIN_X = 0.00   # 0% margin (Full screen)
-ACTIVE_REGION_MARGIN_Y = 0.00   # 0% margin (Full screen)
+ACTIVE_REGION_MARGIN_X = 0.15   # 15% margin for easier edge reach
+ACTIVE_REGION_MARGIN_Y = 0.15   # 15% margin for easier edge reach
 ACTIVE_REGION_COLOR = (255, 255, 0)  # Cyan rectangle for active region
 ACTIVE_REGION_THICKNESS = 2
 INDEX_FINGER_DOT_COLOR = (0, 0, 255)  # Red dot on index finger tip
